@@ -5,9 +5,13 @@ import { CredentialData } from "./CredentialCard";
 
 // Sample data for development
 const sampleCredentials: Omit<CredentialData, "qrCodeDataUrl" | "templateImagePath">[] = [
-  { name: "John", lastname: "Doe", idNumber: "1", role: "B" },
-  { name: "Jane", lastname: "Smith", idNumber: "67890", role: "D" },
-  { name: "Bob", lastname: "Johnson", idNumber: "11111", role: "X" },
+  { name: "Alice", lastname: "Anderson", idNumber: "10001", role: "A" },
+  { name: "Bob", lastname: "Brown", idNumber: "10002", role: "B" },
+  { name: "Charlie", lastname: "Clark", idNumber: "10003", role: "C" },
+  { name: "Diana", lastname: "Davis", idNumber: "10004", role: "D" },
+  { name: "Eve", lastname: "Evans", idNumber: "10005", role: "E" },
+  { name: "Paul", lastname: "Peters", idNumber: "10006", role: "P" },
+  { name: "Xander", lastname: "Xiong", idNumber: "10007", role: "X" },
 ];
 
 // Generate QR codes and load templates

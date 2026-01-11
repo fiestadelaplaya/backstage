@@ -82,7 +82,7 @@ async function generateCredentials(
   csvPath: string,
   outputPath: string,
   templatesDir: string,
-  credentialsPerRow: number = 2
+  credentialsPerRow: number = 4
 ): Promise<void> {
   console.log(`Reading CSV from: ${csvPath}`);
 
@@ -114,14 +114,43 @@ async function generateCredentials(
     });
   }
 
-  // Generate HTML with React component
-  const reactHtml = renderToString(
-    React.createElement(CredentialsPage, {
-      credentials,
-      credentialsPerRow,
-    })
-  );
+  // Split credentials into chunks of 16 (4×4 grid per page)
+  // Pad each page to exactly 16 credentials (fill with null for missing ones)
+  const CREDENTIALS_PER_PAGE = 16; // 4 rows × 4 columns
+  const credentialPages: (CredentialData | null)[][] = [];
+  for (let i = 0; i < credentials.length; i += CREDENTIALS_PER_PAGE) {
+    const pageCredentials = credentials.slice(i, i + CREDENTIALS_PER_PAGE);
+    // Pad to exactly 16 credentials
+    while (pageCredentials.length < CREDENTIALS_PER_PAGE) {
+      pageCredentials.push(null as any);
+    }
+    credentialPages.push(pageCredentials);
+  }
 
+  console.log(`Generating ${credentialPages.length} page(s) with up to ${CREDENTIALS_PER_PAGE} credentials each`);
+
+  // Calculate page dimensions for 4×4 grid
+  // Each card is 945px × 1300px
+  const CARD_WIDTH = 945;
+  const CARD_HEIGHT = 1300;
+  const CREDENTIALS_PER_ROW = 4; // Fixed to 4 for 4×4 grid
+  const ROWS_PER_PAGE = 4; // Fixed to 4 rows per page
+  const pageWidthPx = CREDENTIALS_PER_ROW * CARD_WIDTH;
+  const pageHeightPx = ROWS_PER_PAGE * CARD_HEIGHT;
+  
+  // Generate HTML for each page
+  const pageHtmls = credentialPages.map((pageCredentials, pageIndex) => {
+    const reactHtml = renderToString(
+      React.createElement(CredentialsPage, {
+        credentials: pageCredentials,
+        credentialsPerRow: CREDENTIALS_PER_ROW,
+        noPadding: true,
+      })
+    );
+    
+    return `<div class="credential-page">${reactHtml}</div>`;
+  });
+  
   // Create full HTML document with Tailwind CSS
   const htmlTemplate = `<!DOCTYPE html>
 <html lang="en">
@@ -131,16 +160,56 @@ async function generateCredentials(
   <title>Credentials</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
     @media print {
       @page {
-        size: letter;
-        margin: 0.5in;
+        size: ${pageWidthPx}px ${pageHeightPx}px;
+        margin: 0;
       }
-      body {
+      html, body {
         margin: 0;
         padding: 0;
+        width: 100%;
+        height: 100%;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+      }
+      .credential-page {
+        width: ${pageWidthPx}px;
+        height: ${pageHeightPx}px;
+        page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        position: relative;
+      }
+      .credential-page:last-child {
+        page-break-after: auto;
+      }
+      .credential-page > div {
+        width: ${pageWidthPx}px !important;
+        height: ${pageHeightPx}px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+      }
+      .credential-page .grid {
+        width: ${pageWidthPx}px !important;
+        height: ${pageHeightPx}px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
       }
       .print\\:border-2 {
         border-width: 2px !important;
@@ -152,7 +221,7 @@ async function generateCredentials(
   </style>
 </head>
 <body>
-  <div id="root">${reactHtml}</div>
+  ${pageHtmls.join('\n')}
 </body>
 </html>`;
 
@@ -165,38 +234,59 @@ async function generateCredentials(
   console.log("Generating PDF...");
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage", // Overcome limited resource problems
+      "--disable-gpu", // Disable GPU hardware acceleration
+    ],
   });
 
   try {
     const page = await browser.newPage();
-    await page.setContent(htmlTemplate, { waitUntil: "networkidle0" });
-
-    // Wait for all images to load (data URLs should load immediately, but just in case)
-    await page.evaluate(async () => {
-      await Promise.all(
-        Array.from(document.images).map((img) => {
-          if (img.complete) return Promise.resolve();
-          return new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error(`Failed to load image: ${img.src.substring(0, 50)}`));
-            // Timeout after 5 seconds
-            setTimeout(() => reject(new Error("Image load timeout")), 5000);
-          });
-        })
-      );
+    
+    // Set longer timeout for large pages with many images
+    page.setDefaultTimeout(120000); // 2 minutes
+    
+    // Set viewport to match the page width (height will be auto for multiple pages)
+    await page.setViewport({
+      width: pageWidthPx,
+      height: pageHeightPx, // Set height to accommodate all pages
+      deviceScaleFactor: 1,
+    });
+    
+    // Since all images are data URLs (base64), they load instantly
+    // Use 'load' instead of 'networkidle0' for faster processing
+    await page.setContent(htmlTemplate, { 
+      waitUntil: "load",
+      timeout: 120000, // 2 minutes
     });
 
+    // Wait a bit for any async rendering to complete using setTimeout
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Verify all images are loaded (data URLs should be instant)
+    const imagesLoaded = await page.evaluate(() => {
+      const images = Array.from(document.images);
+      return images.every(img => img.complete && img.naturalWidth > 0);
+    });
+
+    if (!imagesLoaded) {
+      console.warn("Warning: Some images may not have loaded properly");
+    }
+
+    // Generate PDF - use CSS @page rules for page size and breaks
+    // With preferCSSPageSize: true, Puppeteer uses CSS @page size and ignores width/height
     await page.pdf({
       path: outputPath,
-      format: "letter",
       margin: {
-        top: "0.5in",
-        right: "0.5in",
-        bottom: "0.5in",
-        left: "0.5in",
+        top: "0",
+        right: "0",
+        bottom: "0",
+        left: "0",
       },
       printBackground: true,
+      preferCSSPageSize: true, // Use CSS @page size - this ignores width/height parameters
     });
 
     console.log(`PDF file written to: ${outputPath}`);
@@ -214,13 +304,13 @@ if (args.length < 1) {
   console.error("Arguments:");
   console.error("  csv-file              Path to CSV file with name,lastname,idNumber,role columns");
   console.error("  output-file           Output PDF path (default: credentials.pdf)");
-  console.error("  credentials-per-row   Number of credentials per row (default: 2)");
+  console.error("  credentials-per-row   Number of credentials per row (default: 4)");
   process.exit(1);
 }
 
 const csvFile = args[0];
 const outputFile = args[1] || "credentials.pdf";
-const credentialsPerRow = args[2] ? parseInt(args[2], 10) : 2;
+const credentialsPerRow = args[2] ? parseInt(args[2], 10) : 4;
 
 if (!fs.existsSync(csvFile)) {
   console.error(`Error: CSV file not found: ${csvFile}`);
