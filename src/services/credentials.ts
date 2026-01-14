@@ -41,7 +41,7 @@ class CredentialError extends Error {
 }
 
 class Credential {
-  readonly id: number;
+  id: number;
 
   constructor(
     id: number,
@@ -63,6 +63,10 @@ class Credential {
       );
     }
     return parsed;
+  }
+
+  setId(id: number) {
+    this.id = id;
   }
 }
 

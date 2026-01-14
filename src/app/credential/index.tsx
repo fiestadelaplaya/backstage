@@ -7,15 +7,15 @@ import { Image } from "expo-image"
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import Access from "@/components/access";
-import { AccessInfo, createFsm } from "@/services/fsms";
 import ErrorModal from "@/components/error";
+import { access } from "@/services/access";
 
 export default function ScannedUserPage() {
   const { credential: encodedCredential }: { credential: string } =
     useLocalSearchParams();
   const credential = Credential.fromBase64(encodedCredential);
 
-  const [state, setState] = useState<{ user: User, controller: Controller, accessInfo: AccessInfo } | null>(null)
+  const [state, setState] = useState<{ user: User, controller: Controller, canAccess: boolean } | null>(null)
   const [roleClassName, setRoleClassName] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -27,15 +27,14 @@ export default function ScannedUserPage() {
       const controller = await store.getController();
       const user = await userDb.getUser(credential.id);
       if (controller && user) {
-        const accessInfo = createFsm(user)
-          .canAccess(controller.gate)
+        const canAccess = access(user, controller.gate)
         if (!controller.gate) {
           setSpectator(true)
         }
         setState({
           user,
           controller,
-          accessInfo
+          canAccess
         })
         switch (user.role) {
           case Role.A:
@@ -90,9 +89,6 @@ export default function ScannedUserPage() {
     return (
       <View className="flex-1 justify-evenly items-center gap-8 py-24 px-8 w-full">
         <View className="bg-white flex-2 items-center h-fit w-full gap-2 pt-8 rounded-xl overflow-hidden min-w-4/5" style={{ elevation: 1 }}>
-          {state.user &&
-            <Image source={state.user.photo_url} className="h-80 w-80 rounded-xl border" />
-          }
           {state.user.group &&
             <Text>
               {state.user.group}
@@ -112,7 +108,7 @@ export default function ScannedUserPage() {
           </View>
         </View>
         {!spectator &&
-          <Access user={state.user} controller={state.controller} accessInfo={state.accessInfo} />
+          <Access user={state.user} controller={state.controller} canAccess={state.canAccess} />
         }
       </View>
     );

@@ -21,16 +21,17 @@ class ControllerDb {
   async getController(email: string): Promise<Controller | null> {
     const { data, error } = await supabase
       .from("controllers")
-      .select()
+      .select("id, email, users(name, lastname, dni, role), gate")
       .eq("email", email)
       .single();
     if (data) {
+      console.log("data: ", data)
       return {
         id: data.id,
-        name: data.name,
-        lastname: data.lastname,
+        name: data.users.name,
+        lastname: data.users.lastname,
         email: data.email,
-        dni: data.dni,
+        dni: data.users.dni,
         gate: data.gate,
       };
     } else if (error) {

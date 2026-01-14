@@ -2,7 +2,7 @@ import { supabase } from "@/utils/supabase";
 import { router, Slot, Tabs, useNavigation } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Activity, LogOut, QrCode } from "lucide-react-native";
+import { Activity, DoorOpen, LogOut, QrCode } from "lucide-react-native";
 import { cssInterop } from "nativewind";
 import { auth } from "@/services/auth";
 import { useEffect } from "react";
@@ -31,11 +31,11 @@ export default function SecurityLayout() {
         }}
       />
       <Tabs.Screen
-        name="activity"
+        name="gate"
         options={{
-          title: 'Actividad',
+          title: 'Puerta',
           headerShown: false,
-          tabBarIcon: ({ color }) => <Activity size={38} color={color} />,
+          tabBarIcon: ({ color }) => <DoorOpen size={38} color={color} />,
         }}
       />
       <Tabs.Screen

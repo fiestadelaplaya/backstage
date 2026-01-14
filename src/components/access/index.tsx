@@ -9,15 +9,12 @@ import { Pressable, Text, View } from "react-native"
 
 type AccessProps = {
   user: User,
-  accessInfo: AccessInfo,
+  canAccess: boolean,
   controller: Controller
 }
 
-export default function Access({ accessInfo, user, controller }: AccessProps) {
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  if (accessInfo.movement === 'denied') {
+export default function Access({ canAccess, user, controller }: AccessProps) {
+  if (!canAccess) {
     return (
       <View className="flex-1 flex-col p-4 gap-4 h-fit items-center">
         <View className="bg-red-400 rounded-full p-4">
@@ -28,38 +25,14 @@ export default function Access({ accessInfo, user, controller }: AccessProps) {
     )
   }
 
-  async function registerMovement(message: string) {
-    try {
-      if (controller) {
-        await activityDb.registerMovement(user, controller, accessInfo.movement, accessInfo.state)
-      }
-      setMessage(message)
-    } catch (_) {
-      setError("A ocurrido un error.\nContáctese con Francisco Noriega")
-      setMessage(null)
-    }
-  }
-
-  if (accessInfo.pass) {
-
+  if (canAccess) {
     return (
       <View>
-        <Pressable
-          onPress={() => registerMovement("Pase otorgado")}
-          className={`p-8 bg-green-400 rounded-full ${message || error ? "hidden" : "block"}`}>
-          <Ticket size={48} color='black' />
-        </Pressable>
-        <View className={`flex flex-col items-center gap-4 ${error ? "block" : "hidden"} `}>
-          <View className="p-8 rounded-full bg-red-400">
-            <OctagonAlert size={48} color='black' />
-          </View>
-          <Text className={`text-xl text-center`}>{error}</Text>
-        </View>
-        <View className={`flex flex-col items-center gap-4 ${message ? "block" : "hidden"}`}>
+        <View className={`flex flex-col items-center gap-4`}>
           <View className="bg-green-300 p-6 rounded-full">
             <Check size={48} color='black' />
           </View>
-          <Text className={`text-2xl `}>{message}</Text>
+          <Text className={`text-2xl `}>Habilitado</Text>
         </View>
       </View>
     )
