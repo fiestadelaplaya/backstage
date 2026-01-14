@@ -20,7 +20,7 @@ export const CredentialsPage: React.FC<CredentialsPageProps> = ({
       className={noPadding ? '' : 'min-h-screen p-8'}
       style={noPadding ? { 
         width: `${credentialsPerRow * CARD_WIDTH}px`, 
-        height: `${credentialsPerRow * CARD_HEIGHT}px`,
+        height: `${Math.ceil(credentials.length / credentialsPerRow) * CARD_HEIGHT}px`,
         margin: 0, 
         padding: 0,
         backgroundColor: 'white',
@@ -33,13 +33,13 @@ export const CredentialsPage: React.FC<CredentialsPageProps> = ({
             ? `repeat(${credentialsPerRow}, ${CARD_WIDTH}px)`
             : `repeat(${credentialsPerRow}, 1fr)`,
           gridTemplateRows: noPadding 
-            ? `repeat(${credentialsPerRow}, ${CARD_HEIGHT}px)`
+            ? `repeat(${Math.ceil(credentials.length / credentialsPerRow)}, ${CARD_HEIGHT}px)`
             : undefined,
           gap: noPadding ? '0' : undefined,
           display: 'grid',
           ...(noPadding ? { 
             width: `${credentialsPerRow * CARD_WIDTH}px`, 
-            height: `${credentialsPerRow * CARD_HEIGHT}px`,
+            height: `${Math.ceil(credentials.length / credentialsPerRow) * CARD_HEIGHT}px`,
             margin: 0,
             padding: 0,
           } : { maxWidth: 'fit-content' }),

@@ -7,11 +7,11 @@ import { CredentialData } from "./CredentialCard";
 const sampleCredentials: Omit<CredentialData, "qrCodeDataUrl" | "templateImagePath">[] = [
   { name: "Alice", lastname: "Anderson", idNumber: "10001", role: "A" },
   { name: "Bob", lastname: "Brown", idNumber: "10002", role: "B" },
-  { name: "Charlie", lastname: "Clark", idNumber: "10003", role: "C" },
+  { name: "Charlie", lastname: "Clark", idNumber: "10003", role: "C - COM" },
   { name: "Diana", lastname: "Davis", idNumber: "10004", role: "D" },
   { name: "Eve", lastname: "Evans", idNumber: "10005", role: "E" },
   { name: "Paul", lastname: "Peters", idNumber: "10006", role: "P" },
-  { name: "Xander", lastname: "Xiong", idNumber: "10007", role: "X" },
+  { name: "Xander", lastname: "Xiong", idNumber: "10007", role: "X - TEC" },
 ];
 
 // Generate QR codes and load templates
@@ -32,7 +32,8 @@ async function loadCredentialData(): Promise<CredentialData[]> {
       });
 
       // Load template image (Vite serves files from publicDir at root)
-      const templatePath = `/${cred.role.toUpperCase()}.png`;
+      const templateRole = cred.role === "C - COM" ? "C" : (cred.role === "X - TEC" ? "X" : cred.role.toUpperCase());
+      const templatePath = `/${templateRole.toUpperCase()}.png`;
 
       return {
         ...cred,

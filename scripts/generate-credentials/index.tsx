@@ -39,7 +39,8 @@ async function generateQRCode(data: string): Promise<string> {
 }
 
 function loadTemplateAsDataUrl(role: string, templatesDir: string): string {
-  const templateFile = `${role.toUpperCase()}.png`;
+  const templateRole = role === "X - TEC" ? "X" : (role === "C - COM" ? "C" : role.toUpperCase());
+  const templateFile = `${templateRole.toUpperCase()}.png`;
   const templatePath = path.join(templatesDir, templateFile);
 
   if (!fs.existsSync(templatePath)) {
@@ -69,7 +70,7 @@ function parseCSV(filePath: string): CSVRow[] {
   }
 
   const firstRow = records[0];
-  if (!firstRow.name || !firstRow.lastname || !firstRow.idNumber || !firstRow.role) {
+  if (!('name' in firstRow) || !('lastname' in firstRow) || !('idNumber' in firstRow) || !('role' in firstRow)) {
     throw new Error(
       'CSV must have columns: "name", "lastname", "idNumber", and "role"'
     );
@@ -114,13 +115,13 @@ async function generateCredentials(
     });
   }
 
-  // Split credentials into chunks of 16 (4×4 grid per page)
-  // Pad each page to exactly 16 credentials (fill with null for missing ones)
-  const CREDENTIALS_PER_PAGE = 16; // 4 rows × 4 columns
+  // Split credentials into chunks of 8 (4×2 grid per page)
+  // Pad each page to exactly 8 credentials (fill with null for missing ones)
+  const CREDENTIALS_PER_PAGE = 8; // 2 rows × 4 columns
   const credentialPages: (CredentialData | null)[][] = [];
   for (let i = 0; i < credentials.length; i += CREDENTIALS_PER_PAGE) {
     const pageCredentials = credentials.slice(i, i + CREDENTIALS_PER_PAGE);
-    // Pad to exactly 16 credentials
+    // Pad to exactly 8 credentials
     while (pageCredentials.length < CREDENTIALS_PER_PAGE) {
       pageCredentials.push(null as any);
     }
@@ -129,30 +130,18 @@ async function generateCredentials(
 
   console.log(`Generating ${credentialPages.length} page(s) with up to ${CREDENTIALS_PER_PAGE} credentials each`);
 
-  // Calculate page dimensions for 4×4 grid
+  // Calculate page dimensions for 4×2 grid
   // Each card is 945px × 1300px
   const CARD_WIDTH = 945;
   const CARD_HEIGHT = 1300;
-  const CREDENTIALS_PER_ROW = 4; // Fixed to 4 for 4×4 grid
-  const ROWS_PER_PAGE = 4; // Fixed to 4 rows per page
+  const CREDENTIALS_PER_ROW = 4; // Fixed to 4 columns
+  const ROWS_PER_PAGE = 2; // Fixed to 2 rows per page
   const pageWidthPx = CREDENTIALS_PER_ROW * CARD_WIDTH;
   const pageHeightPx = ROWS_PER_PAGE * CARD_HEIGHT;
   
-  // Generate HTML for each page
-  const pageHtmls = credentialPages.map((pageCredentials, pageIndex) => {
-    const reactHtml = renderToString(
-      React.createElement(CredentialsPage, {
-        credentials: pageCredentials,
-        credentialsPerRow: CREDENTIALS_PER_ROW,
-        noPadding: true,
-      })
-    );
-    
-    return `<div class="credential-page">${reactHtml}</div>`;
-  });
-  
-  // Create full HTML document with Tailwind CSS
-  const htmlTemplate = `<!DOCTYPE html>
+  // Helper function to create HTML template for a single page
+  const createPageHtml = (pageContent: string): string => {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -189,9 +178,6 @@ async function generateCredentials(
         padding: 0;
         position: relative;
       }
-      .credential-page:last-child {
-        page-break-after: auto;
-      }
       .credential-page > div {
         width: ${pageWidthPx}px !important;
         height: ${pageHeightPx}px !important;
@@ -221,75 +207,114 @@ async function generateCredentials(
   </style>
 </head>
 <body>
-  ${pageHtmls.join('\n')}
+  ${pageContent}
 </body>
 </html>`;
+  };
 
-  // Write HTML file
-  const htmlPath = outputPath.replace(/\.pdf$/i, ".html");
-  fs.writeFileSync(htmlPath, htmlTemplate);
-  console.log(`HTML file written to: ${htmlPath}`);
-
-  // Generate PDF using Puppeteer
+  // Generate PDF using Puppeteer - page by page to avoid string length limits
   console.log("Generating PDF...");
   const browser = await puppeteer.launch({
     headless: true,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage", // Overcome limited resource problems
-      "--disable-gpu", // Disable GPU hardware acceleration
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
     ],
   });
 
   try {
     const page = await browser.newPage();
-    
-    // Set longer timeout for large pages with many images
     page.setDefaultTimeout(120000); // 2 minutes
     
-    // Set viewport to match the page width (height will be auto for multiple pages)
     await page.setViewport({
       width: pageWidthPx,
-      height: pageHeightPx, // Set height to accommodate all pages
+      height: pageHeightPx,
       deviceScaleFactor: 1,
     });
+
+    // Generate PDF for each page separately and merge
+    const tempPdfPaths: string[] = [];
     
-    // Since all images are data URLs (base64), they load instantly
-    // Use 'load' instead of 'networkidle0' for faster processing
-    await page.setContent(htmlTemplate, { 
-      waitUntil: "load",
-      timeout: 120000, // 2 minutes
-    });
+    for (let pageIndex = 0; pageIndex < credentialPages.length; pageIndex++) {
+      const pageCredentials = credentialPages[pageIndex];
+      console.log(`Generating page ${pageIndex + 1}/${credentialPages.length}...`);
+      
+      // Generate HTML for this page only
+      const reactHtml = renderToString(
+        React.createElement(CredentialsPage, {
+          credentials: pageCredentials,
+          credentialsPerRow: CREDENTIALS_PER_ROW,
+          noPadding: true,
+        })
+      );
+      
+      const pageContent = `<div class="credential-page">${reactHtml}</div>`;
+      const htmlTemplate = createPageHtml(pageContent);
+      
+      // Set content and wait for it to load
+      await page.setContent(htmlTemplate, { 
+        waitUntil: "load",
+        timeout: 120000,
+      });
 
-    // Wait a bit for any async rendering to complete using setTimeout
-    await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait a bit for rendering
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Verify all images are loaded (data URLs should be instant)
-    const imagesLoaded = await page.evaluate(() => {
-      const images = Array.from(document.images);
-      return images.every(img => img.complete && img.naturalWidth > 0);
-    });
-
-    if (!imagesLoaded) {
-      console.warn("Warning: Some images may not have loaded properly");
+      // Generate PDF for this single page
+      const tempPdfPath = outputPath.replace(/\.pdf$/i, `_page_${pageIndex}.pdf`);
+      tempPdfPaths.push(tempPdfPath);
+      
+      await page.pdf({
+        path: tempPdfPath,
+        margin: {
+          top: "0",
+          right: "0",
+          bottom: "0",
+          left: "0",
+        },
+        printBackground: true,
+        preferCSSPageSize: true,
+      });
     }
 
-    // Generate PDF - use CSS @page rules for page size and breaks
-    // With preferCSSPageSize: true, Puppeteer uses CSS @page size and ignores width/height
-    await page.pdf({
-      path: outputPath,
-      margin: {
-        top: "0",
-        right: "0",
-        bottom: "0",
-        left: "0",
-      },
-      printBackground: true,
-      preferCSSPageSize: true, // Use CSS @page size - this ignores width/height parameters
-    });
+    // Merge all PDF pages into one
+    console.log("Merging PDF pages...");
+    const { PDFDocument } = await import("pdf-lib");
+    const mergedPdf = await PDFDocument.create();
+
+    for (const tempPdfPath of tempPdfPaths) {
+      const pdfBytes = fs.readFileSync(tempPdfPath);
+      const pdf = await PDFDocument.load(pdfBytes);
+      const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+      pages.forEach((pdfPage) => mergedPdf.addPage(pdfPage));
+      
+      // Clean up temp file
+      fs.unlinkSync(tempPdfPath);
+    }
+
+    // Save merged PDF
+    const mergedPdfBytes = await mergedPdf.save();
+    fs.writeFileSync(outputPath, mergedPdfBytes);
 
     console.log(`PDF file written to: ${outputPath}`);
+    
+    // Write HTML file for first page only (for debugging, to avoid string length issues)
+    if (credentialPages.length > 0) {
+      const firstPageReactHtml = renderToString(
+        React.createElement(CredentialsPage, {
+          credentials: credentialPages[0],
+          credentialsPerRow: CREDENTIALS_PER_ROW,
+          noPadding: true,
+        })
+      );
+      const firstPageContent = `<div class="credential-page">${firstPageReactHtml}</div>`;
+      const htmlTemplate = createPageHtml(firstPageContent);
+      const htmlPath = outputPath.replace(/\.pdf$/i, ".html");
+      fs.writeFileSync(htmlPath, htmlTemplate);
+      console.log(`HTML file written to: ${htmlPath} (first page only for debugging)`);
+    }
   } finally {
     await browser.close();
   }
